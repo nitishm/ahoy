@@ -1,3 +1,2 @@
 # Istio Ahoy
-
-Istio ahoy is a Teminal UI based configuration explorer for the istio-proxy
+A terminal based explorer for envoy (aka istio-proxy) configuration resources like Listeners, Clusters and Routes.
