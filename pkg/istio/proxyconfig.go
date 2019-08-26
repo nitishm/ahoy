@@ -10,6 +10,7 @@ import (
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	"istio.io/istio/istioctl/pkg/kubernetes"
 	"istio.io/istio/istioctl/pkg/util/configdump"
+	envoycd "istio.io/istio/istioctl/pkg/writer/envoy/configdump"
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pkg/config/host"
 )
@@ -39,20 +40,20 @@ func New(podName, podNamespace string) (*ProxyConfig, error) {
 	return &ProxyConfig{cd}, nil
 }
 
-func (c *ProxyConfig) Listeners() ([]*xdsapi.Listener, error) {
+func (c *ProxyConfig) Listeners(filter envoycd.ListenerFilter) ([]*xdsapi.Listener, error) {
 	listenerDump, err := c.configdump.GetListenerConfigDump()
 	if err != nil {
 		return nil, err
 	}
 	listeners := make([]*xdsapi.Listener, 0)
 	for _, listener := range listenerDump.DynamicActiveListeners {
-		if listener.Listener != nil {
+		if listener.Listener != nil && filter.Verify(listener.Listener) {
 			listeners = append(listeners, listener.Listener)
 		}
 	}
 
 	for _, listener := range listenerDump.StaticListeners {
-		if listener.Listener != nil {
+		if listener.Listener != nil && filter.Verify(listener.Listener) {
 			listeners = append(listeners, listener.Listener)
 		}
 	}
@@ -62,7 +63,7 @@ func (c *ProxyConfig) Listeners() ([]*xdsapi.Listener, error) {
 	return listeners, nil
 }
 
-func (c *ProxyConfig) Clusters() ([]*xdsapi.Cluster, error) {
+func (c *ProxyConfig) Clusters(filter envoycd.ClusterFilter) ([]*xdsapi.Cluster, error) {
 	safelyParseSubsetKey := func(key string) (model.TrafficDirection, string, host.Name, int) {
 		if len(strings.Split(key, "|")) > 3 {
 			return model.ParseSubsetKey(key)
@@ -77,12 +78,12 @@ func (c *ProxyConfig) Clusters() ([]*xdsapi.Cluster, error) {
 	}
 	clusters := make([]*xdsapi.Cluster, 0)
 	for _, cluster := range clusterDump.DynamicActiveClusters {
-		if cluster.Cluster != nil {
+		if cluster.Cluster != nil && filter.Verify(cluster.Cluster) {
 			clusters = append(clusters, cluster.Cluster)
 		}
 	}
 	for _, cluster := range clusterDump.StaticClusters {
-		if cluster.Cluster != nil {
+		if cluster.Cluster != nil && filter.Verify(cluster.Cluster) {
 			clusters = append(clusters, cluster.Cluster)
 		}
 	}
@@ -106,19 +107,19 @@ func (c *ProxyConfig) Clusters() ([]*xdsapi.Cluster, error) {
 	return clusters, nil
 }
 
-func (c *ProxyConfig) Routes() ([]*xdsapi.RouteConfiguration, error) {
+func (c *ProxyConfig) Routes(filter envoycd.RouteFilter) ([]*xdsapi.RouteConfiguration, error) {
 	routeDump, err := c.configdump.GetRouteConfigDump()
 	if err != nil {
 		return nil, err
 	}
 	routes := make([]*xdsapi.RouteConfiguration, 0)
 	for _, route := range routeDump.DynamicRouteConfigs {
-		if route.RouteConfig != nil {
+		if route.RouteConfig != nil && filter.Verify(route.RouteConfig) {
 			routes = append(routes, route.RouteConfig)
 		}
 	}
 	for _, route := range routeDump.StaticRouteConfigs {
-		if route.RouteConfig != nil {
+		if route.RouteConfig != nil && filter.Verify(route.RouteConfig) {
 			routes = append(routes, route.RouteConfig)
 		}
 	}

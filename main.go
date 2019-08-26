@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/nitishm/ahoy/pkg/istio"
+	"istio.io/istio/istioctl/pkg/writer/envoy/configdump"
 )
 
 func main() {
@@ -15,13 +16,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	listeners, err := cd.Listeners()
+	listeners, err := cd.Listeners(configdump.ListenerFilter{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, listener := range listeners {
-		fmt.Println(listener.Name)
+		fmt.Println(listener.GetName())
 	}
 
 }
