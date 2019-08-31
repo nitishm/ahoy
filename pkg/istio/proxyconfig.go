@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/http_connection_manager/v2"
+	"github.com/envoyproxy/go-control-plane/pkg/util"
+	"github.com/gogo/protobuf/types"
 	"istio.io/istio/istioctl/pkg/kubernetes"
 	"istio.io/istio/istioctl/pkg/util/configdump"
 	envoycd "istio.io/istio/istioctl/pkg/writer/envoy/configdump"
@@ -138,4 +141,48 @@ func (c *ProxyConfig) Routes(filter envoycd.RouteFilter) ([]*xdsapi.RouteConfigu
 		return iName < jName
 	})
 	return routes, nil
+}
+
+func (c *ProxyConfig) FetchRoutes(listener *xdsapi.Listener) ([]*xdsapi.RouteConfiguration, error) {
+	if listener == nil {
+		return nil, fmt.Errorf("Listener cannot be nil")
+	}
+	for _, chain := range listener.FilterChains {
+		for _, filter := range chain.Filters {
+			if filter.Name != util.HTTPConnectionManager {
+				continue
+			}
+
+			config := &hcm.HttpConnectionManager{}
+
+			// use typed config if available
+			if typedConfig := filter.GetTypedConfig(); typedConfig != nil {
+				types.UnmarshalAny(typedConfig, config)
+			} else {
+				util.StructToMessage(filter.GetConfig(), config)
+			}
+
+			if config == nil {
+				continue
+			}
+
+			if rds, ok := config.RouteSpecifier.(*hcm.HttpConnectionManager_Rds); ok && rds != nil && rds.Rds != nil {
+				fmt.Printf("Listener %s Route Name %s\n", listener.Name, rds.Rds.RouteConfigName)
+				routes, err := c.Routes(envoycd.RouteFilter{Name: rds.Rds.RouteConfigName})
+				if err != nil {
+					return nil, err
+				}
+
+				return routes, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (c *ProxyConfig) FetchClusters(route *xdsapi.RouteConfiguration) ([]*xdsapi.Cluster, error) {
+	if route == nil {
+		return nil, fmt.Errorf("Route cannot be nil")
+	}
+	return nil, nil
 }

@@ -1,17 +1,30 @@
 package main
 
 import (
-	"fmt"
+	"flag"
 	"log"
 
 	"github.com/nitishm/ahoy/pkg/istio"
 	"istio.io/istio/istioctl/pkg/writer/envoy/configdump"
 )
 
+var (
+	name      string
+	namespace string
+)
+
+func init() {
+	flag.StringVar(&name, "pod", "", "podname")
+	flag.StringVar(&namespace, "ns", "default", "namespace")
+}
 func main() {
-	podName := "istio-ingressgateway-1-0-0-40-dbg-9d9c95d8-jjnw4"
-	podNamespace := "fed-test-host"
-	cd, err := istio.New(podName, podNamespace)
+	flag.Parse()
+
+	if name == "" {
+		log.Fatal("Pod name cannot be an empty string")
+	}
+
+	cd, err := istio.New(name, namespace)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -22,7 +35,17 @@ func main() {
 	}
 
 	for _, listener := range listeners {
-		fmt.Println(listener.GetName())
+		routes, err := cd.FetchRoutes(listener)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, route := range routes {
+			_, err = cd.FetchClusters(route)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
 
 }
