@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
+	"github.com/envoyproxy/go-control-plane/envoy/api/v2/route"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/http_connection_manager/v2"
 	"github.com/envoyproxy/go-control-plane/pkg/util"
 	"github.com/gogo/protobuf/types"
@@ -143,11 +144,11 @@ func (c *ProxyConfig) Routes(filter envoycd.RouteFilter) ([]*xdsapi.RouteConfigu
 	return routes, nil
 }
 
-func (c *ProxyConfig) FetchRoutes(listener *xdsapi.Listener) ([]*xdsapi.RouteConfiguration, error) {
+func (c *ProxyConfig) FetchRouteConfigurations(listener *xdsapi.Listener) ([]*xdsapi.RouteConfiguration, error) {
 	if listener == nil {
 		return nil, fmt.Errorf("Listener cannot be nil")
 	}
-	for _, chain := range listener.FilterChains {
+	for _, chain := range listener.GetFilterChains() {
 		for _, filter := range chain.Filters {
 			if filter.Name != util.HTTPConnectionManager {
 				continue
@@ -167,22 +168,53 @@ func (c *ProxyConfig) FetchRoutes(listener *xdsapi.Listener) ([]*xdsapi.RouteCon
 			}
 
 			if rds, ok := config.RouteSpecifier.(*hcm.HttpConnectionManager_Rds); ok && rds != nil && rds.Rds != nil {
-				fmt.Printf("Listener %s Route Name %s\n", listener.Name, rds.Rds.RouteConfigName)
-				routes, err := c.Routes(envoycd.RouteFilter{Name: rds.Rds.RouteConfigName})
+				routeConfigurations, err := c.Routes(envoycd.RouteFilter{Name: rds.Rds.RouteConfigName})
 				if err != nil {
 					return nil, err
 				}
 
-				return routes, nil
+				return routeConfigurations, nil
 			}
 		}
 	}
 	return nil, nil
 }
 
-func (c *ProxyConfig) FetchClusters(route *xdsapi.RouteConfiguration) ([]*xdsapi.Cluster, error) {
-	if route == nil {
-		return nil, fmt.Errorf("Route cannot be nil")
+func (c *ProxyConfig) FetchVirtualHosts(routeConfiguration *xdsapi.RouteConfiguration) ([]*route.VirtualHost, error) {
+	if routeConfiguration == nil {
+		return nil, fmt.Errorf("RouteConfiguration cannot be nil")
 	}
-	return nil, nil
+	return routeConfiguration.GetVirtualHosts(), nil
+}
+
+func (c *ProxyConfig) FetchRoutes(virtualHost *route.VirtualHost) ([]*route.Route, error) {
+	if virtualHost == nil {
+		return nil, fmt.Errorf("VirtualHost cannot be nil")
+	}
+	return virtualHost.GetRoutes(), nil
+}
+
+func (c *ProxyConfig) FetchCluster(route *route.Route) (*xdsapi.Cluster, error) {
+	safelyParseSubsetKey := func(key string) (model.TrafficDirection, string, host.Name, int) {
+		if len(strings.Split(key, "|")) > 3 {
+			return model.ParseSubsetKey(key)
+		}
+		name := host.Name(key)
+		return "", "", name, 0
+	}
+	cluster := route.GetRoute().GetCluster()
+	_, _, name, _ := safelyParseSubsetKey(cluster)
+
+	clusters, err := c.Clusters(envoycd.ClusterFilter{
+		FQDN: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(clusters) == 0 {
+		return nil, fmt.Errorf("No clusters found")
+	}
+
+	return clusters[0], nil
 }

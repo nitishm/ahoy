@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/nitishm/ahoy/pkg/istio"
@@ -35,15 +36,30 @@ func main() {
 	}
 
 	for _, listener := range listeners {
-		routes, err := cd.FetchRoutes(listener)
+		routeConfigurations, err := cd.FetchRouteConfigurations(listener)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		for _, route := range routes {
-			_, err = cd.FetchClusters(route)
+		fmt.Printf("\n\n== Listener ==\n%v\n", listener.GetName())
+		for _, routeConfiguration := range routeConfigurations {
+			virtualHosts, err := cd.FetchVirtualHosts(routeConfiguration)
 			if err != nil {
 				log.Fatal(err)
+			}
+			fmt.Printf("== RouteConfiguration ==\n%v\n", routeConfiguration.GetName())
+			for _, virtualHost := range virtualHosts {
+				routes, err := cd.FetchRoutes(virtualHost)
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Printf("== VirtualHost ==\n%v\n", routeConfiguration.GetName())
+				for _, route := range routes {
+					cluster, err := cd.FetchCluster(route)
+					if err != nil {
+						log.Fatal(err)
+					}
+					fmt.Printf("== Route ==\n%v\n== Cluster== \n%v\n", route.GetMatch().GetPrefix(), cluster.GetName())
+				}
 			}
 		}
 	}
